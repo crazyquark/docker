@@ -1,0 +1,43 @@
+version: "3.5"
+
+services:
+  librenms:
+    image: crazyquark/librenms:armhf
+    container_name: librenms
+    hostname: librenms
+    volumes:
+      - "./librenms:/data"
+    ports:
+      - "6060:80"
+    environment:
+      - "TZ=Europe/Bucharest"
+      - "DB_HOST=192.168.1.94"
+      - "DB_NAME=librenms"
+      - "DB_USER=librenms"
+      - "DB_PASSWORD=FwBBdcwMeyKciuM7"
+      - "DB_PORT=4306"
+      - "DB_TIMEOUT=30"
+    env_file:
+      - "./librenms.env"
+    restart: always
+
+  cron:
+    image: crazyquark/librenms:armhf
+    container_name: librenms_cron
+    hostname: librenms
+    depends_on:
+      - librenms
+    volumes:
+      - "./librenms:/data"
+    environment:
+      - "TZ=Europe/Bucharest"
+      - "DB_HOST=192.168.1.94"
+      - "DB_NAME=librenms"
+      - "DB_USER=librenms"
+      - "DB_PASSWORD=FwBBdcwMeyKciuM7"
+      - "DB_PORT=4306"
+      - "DB_TIMEOUT=30"
+      - "SIDECAR_CRON=1"
+    env_file:
+      - "./librenms.env"
+    restart: always
