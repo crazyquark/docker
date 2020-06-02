@@ -2,11 +2,10 @@ version: "3.5"
 
 services:
   db:
-    image: mariadb:10.2
+    image: mariadb:10.4
     container_name: librenms_db
     command:
       - "mysqld"
-      - "--sql-mode="
       - "--innodb-file-per-table=1"
       - "--lower-case-table-names=0"
       - "--character-set-server=utf8"
@@ -28,6 +27,13 @@ services:
       - "TZ=${TZ}"
     restart: always
 
+  redis:
+    image: redis:5.0-alpine
+    container_name: librenms_redis
+    environment:
+      - "TZ=${TZ}"
+    restart: always
+
   rrdcached:
     image: crazymax/rrdcached
     container_name: librenms_rrdcached
@@ -36,6 +42,8 @@ services:
       - "./rrd-journal:/data/journal"
     environment:
       - "TZ=${TZ}"
+      - "PUID=${PUID}"
+      - "PGID=${PGID}"
       - "LOG_LEVEL=LOG_INFO"
       - "WRITE_TIMEOUT=1800"
       - "WRITE_JITTER=1800"
@@ -43,16 +51,11 @@ services:
       - "FLUSH_DEAD_DATA_INTERVAL=3600"
     restart: always
 
-  smtp:
-    image: juanluisbaptiste/postfix
-    container_name: librenms_smtp
-    volumes:
-      - "/etc/localtime:/etc/localtime:ro"
-    environment:
-      - "SERVER_HOSTNAME=librenms.example.com"
-      - "SMTP_SERVER=${SMTP_SERVER}"
-      - "SMTP_USERNAME=${SMTP_USERNAME}"
-      - "SMTP_PASSWORD=${SMTP_PASSWORD}"
+  msmtpd:
+    image: crazymax/msmtpd:latest
+    container_name: librenms_msmtpd
+    env_file:
+      - "./msmtpd.env"
     restart: always
 
   librenms:
@@ -68,9 +71,11 @@ services:
       - db
       - memcached
       - rrdcached
-      - smtp
+      - msmtpd
     volumes:
       - "./librenms:/data"
+    env_file:
+      - "./librenms.env"
     environment:
       - "TZ=${TZ}"
       - "PUID=${PUID}"
@@ -80,19 +85,20 @@ services:
       - "DB_USER=${MYSQL_USER}"
       - "DB_PASSWORD=${MYSQL_PASSWORD}"
       - "DB_TIMEOUT=60"
-    env_file:
-      - "./librenms.env"
     restart: always
 
-  cron:
+  dispatcher:
     image: librenms/librenms:latest
-    container_name: librenms_cron
+    container_name: librenms_dispatcher
     domainname: example.com
     hostname: librenms
     depends_on:
       - librenms
+      - redis
     volumes:
       - "./librenms:/data"
+    env_file:
+      - "./librenms.env"
     environment:
       - "TZ=${TZ}"
       - "PUID=${PUID}"
@@ -102,9 +108,10 @@ services:
       - "DB_USER=${MYSQL_USER}"
       - "DB_PASSWORD=${MYSQL_PASSWORD}"
       - "DB_TIMEOUT=60"
-      - "SIDECAR_CRON=1"
-    env_file:
-      - "./librenms.env"
+      - "REDIS_HOST=redis"
+      - "REDIS_PORT=6379"
+      - "REDIS_DB=0"
+      - "SIDECAR_DISPATCHER=1"
     restart: always
 
   syslog-ng:
@@ -123,6 +130,8 @@ services:
         protocol: udp
     volumes:
       - "./librenms:/data"
+    env_file:
+      - "./librenms.env"
     environment:
       - "TZ=${TZ}"
       - "PUID=${PUID}"
@@ -133,6 +142,4 @@ services:
       - "DB_PASSWORD=${MYSQL_PASSWORD}"
       - "DB_TIMEOUT=60"
       - "SIDECAR_SYSLOGNG=1"
-    env_file:
-      - "./librenms.env"
     restart: always

@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.64.1-RC1 (2020/06/01)
+
+* LibreNMS 1.64.1
+
+## 1.64-RC1 (2020/06/01)
+
+* LibreNMS 1.64
+* Python 2 removed (librenms/librenms#11531)
+* Multi-platform image
+* Publish edge image
+
+## 1.63-RC7 (2020/05/28)
+
+* Use recommended `lnms` command
+* Remove `--sql-mode` and bump Mariadb to 10.4
+
+## 1.63-RC6 (2020/05/24)
+
+* Bring back Git package
+
+## 1.63-RC5 (2020/05/22)
+
+* Add missing dep and perms for Weathermap plugin (#82)
+
+## 1.63-RC4 (2020/05/21)
+
+* Add LibreNMS Weathermap plugin (#81)
+* Fix syslogng version
+* Switch to [msmtpd SMTP relay](https://github.com/crazy-max/docker-msmtpd) Docker image
+
+## 1.63-RC3 (2020/05/13)
+
+* Run librenms-service as librenms user (#76)
+* Mark sidecar cron container as deprecated
+
+## 1.63-RC2 (2020/05/08)
+
+* Fix poller-wrapper
+
+## 1.63-RC1 (2020/05/08)
+
+* LibreNMS 1.63
+* Add sidecar dispatcher container (#70)
+* Add `LISTEN_IPV6` env var (#71)
+* Alpine Linux 3.11
+
+## 1.62.2-RC2 (2020/04/13)
+
+* Fix log file permissions (#66)
+* Switch to Open Container Specification labels as label-schema.org ones are deprecated
+
+## 1.62.2-RC1 (2020/04/04)
+
+* LibreNMS 1.62.2
+
+## 1.61-RC4 (2020/03/27)
+
+* Fix folder creation (#62)
+
 ## 1.61-RC3 (2020/03/22)
 
 * Allow multi discovery workers through `LIBRENMS_CRON_DISCOVERY_WRAPPER_WORKERS` env var (#59)

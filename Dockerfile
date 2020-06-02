@@ -1,19 +1,23 @@
-FROM alpine:3.10
+FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.11
 
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION
 
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+RUN printf "I am running on ${BUILDPLATFORM:-linux/amd64}, building for ${TARGETPLATFORM:-linux/amd64}\n$(uname -a)\n"
+
 LABEL maintainer="CrazyMax" \
-  org.label-schema.build-date=$BUILD_DATE \
-  org.label-schema.name="librenms" \
-  org.label-schema.description="LibreNMS" \
-  org.label-schema.version=$VERSION \
-  org.label-schema.url="https://github.com/librenms/docker" \
-  org.label-schema.vcs-ref=$VCS_REF \
-  org.label-schema.vcs-url="https://github.com/librenms/docker" \
-  org.label-schema.vendor="LibreNMS" \
-  org.label-schema.schema-version="1.0"
+  org.opencontainers.image.created=$BUILD_DATE \
+  org.opencontainers.image.url="https://github.com/librenms/docker" \
+  org.opencontainers.image.source="https://github.com/librenms/docker" \
+  org.opencontainers.image.version=$VERSION \
+  org.opencontainers.image.revision=$VCS_REF \
+  org.opencontainers.image.vendor="CrazyMax" \
+  org.opencontainers.image.title="LibreNMS" \
+  org.opencontainers.image.description="LibreNMS" \
+  org.opencontainers.image.licenses="MIT"
 
 RUN apk --update --no-cache add \
     busybox-extras \
@@ -29,9 +33,9 @@ RUN apk --update --no-cache add \
     graphviz \
     imagemagick \
     ipmitool \
+    mariadb-client \
     monitoring-plugins \
     mtr \
-    mysql-client \
     net-snmp \
     net-snmp-tools \
     nginx \
@@ -56,6 +60,7 @@ RUN apk --update --no-cache add \
     php7-openssl \
     php7-pdo \
     php7-pdo_mysql \
+    php7-pear \
     php7-phar \
     php7-posix \
     php7-session \
@@ -65,61 +70,77 @@ RUN apk --update --no-cache add \
     php7-tokenizer \
     php7-xml \
     php7-zip \
-    py-mysqldb \
-    python \
-    py2-pip \
     python3 \
     rrdtool \
     runit \
     shadow \
     su-exec \
-    syslog-ng \
+    syslog-ng=3.22.1-r2 \
     ttf-dejavu \
     tzdata  \
     util-linux \
     whois \
-  && pip2 install --upgrade pip \
-  && pip2 install python-memcached \
+  && apk --update --no-cache add -t build-dependencies \
+    gcc \
+    make \
+    mariadb-dev \
+    musl-dev \
+    python3-dev \
+  && S6_ARCH=$(case ${TARGETPLATFORM:-linux/amd64} in \
+    "linux/amd64")   echo "amd64"   ;; \
+    "linux/arm/v6")  echo "arm"     ;; \
+    "linux/arm/v7")  echo "armhf"   ;; \
+    "linux/arm64")   echo "aarch64" ;; \
+    "linux/386")     echo "x86"     ;; \
+    "linux/ppc64le") echo "ppc64le" ;; \
+    *)               echo ""        ;; esac) \
+  && echo "S6_ARCH=$S6_ARCH" \
+  && wget -q "https://github.com/just-containers/s6-overlay/releases/latest/download/s6-overlay-${S6_ARCH}.tar.gz" -qO "/tmp/s6-overlay-${S6_ARCH}.tar.gz" \
+  && tar xzf /tmp/s6-overlay-${S6_ARCH}.tar.gz -C / \
+  && s6-echo "s6-overlay installed" \
   && pip3 install --upgrade pip \
-  && pip3 install python-memcached \
-  && wget -q "https://github.com/just-containers/s6-overlay/releases/latest/download/s6-overlay-amd64.tar.gz" -qO "/tmp/s6-overlay-amd64.tar.gz" \
-  && tar xzf /tmp/s6-overlay-amd64.tar.gz -C / \
+  && pip3 install python-memcached mysqlclient --upgrade \
+  && curl -sSL https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer \
+  && apk del build-dependencies \
   && rm -rf /var/cache/apk/* /var/www/* /tmp/* \
   && setcap cap_net_raw+ep /usr/bin/nmap \
   && setcap cap_net_raw+ep /usr/sbin/fping
 
 ENV S6_BEHAVIOUR_IF_STAGE2_FAILS="2" \
-  LIBRENMS_VERSION="1.61" \
+  LIBRENMS_VERSION="1.64.1" \
   LIBRENMS_PATH="/opt/librenms" \
   LIBRENMS_DOCKER="1" \
   TZ="UTC" \
   PUID="1000" \
   PGID="1000"
 
-RUN mkdir -p /opt \
-  && curl -sSL https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer \
-  && git clone --branch ${LIBRENMS_VERSION} https://github.com/librenms/librenms.git ${LIBRENMS_PATH} \
-  && COMPOSER_CACHE_DIR="/tmp" composer install --no-dev --no-interaction --no-ansi --working-dir=${LIBRENMS_PATH} \
+RUN addgroup -g ${PGID} librenms \
+  && adduser -D -h /home/librenms -u ${PUID} -G librenms -s /bin/sh -D librenms \
   && curl -sSLk -q https://raw.githubusercontent.com/librenms/librenms-agent/master/snmp/distro -o /usr/bin/distro \
-  && chmod +x /usr/bin/distro \
-  && mkdir -p ${LIBRENMS_PATH}/config.d \
-  && cp ${LIBRENMS_PATH}/config.php.default ${LIBRENMS_PATH}/config.php \
-  && cp ${LIBRENMS_PATH}/snmpd.conf.example /etc/snmp/snmpd.conf \
-  && sed -i "1s|.*|#!/usr/bin/env python3|" ${LIBRENMS_PATH}/snmp-scan.py \
-  && echo "foreach (glob(\"/data/config/*.php\") as \$filename) include \$filename;" >> ${LIBRENMS_PATH}/config.php \
-  && echo "foreach (glob(\"${LIBRENMS_PATH}/config.d/*.php\") as \$filename) include \$filename;" >> ${LIBRENMS_PATH}/config.php \
-  && pip3 install -r ${LIBRENMS_PATH}/requirements.txt \
+  && chmod +x /usr/bin/distro
+
+WORKDIR ${LIBRENMS_PATH}
+RUN git clone --branch ${LIBRENMS_VERSION} https://github.com/librenms/librenms.git . \
+  && pip3 install -r requirements.txt --upgrade \
+  && COMPOSER_CACHE_DIR="/tmp" composer install --no-dev --no-interaction --no-ansi \
+  && mkdir config.d \
+  && cp config.php.default config.php \
+  && cp snmpd.conf.example /etc/snmp/snmpd.conf \
+  && sed -i '/runningUser/d' lnms \
+  && echo "foreach (glob(\"/data/config/*.php\") as \$filename) include \$filename;" >> config.php \
+  && echo "foreach (glob(\"${LIBRENMS_PATH}/config.d/*.php\") as \$filename) include \$filename;" >> config.php \
+  && git clone https://github.com/librenms-plugins/Weathermap.git ./html/plugins/Weathermap \
   && chown -R nobody.nogroup ${LIBRENMS_PATH} \
-  && rm -rf ${LIBRENMS_PATH}/.git /tmp/*
+  && rm -rf .git \
+    html/plugins/Test \
+    html/plugins/Weathermap/.git \
+    html/plugins/Weathermap/configs \
+    /tmp/*
 
 COPY rootfs /
-
-RUN addgroup -g ${PGID} librenms \
-  && adduser -D -h ${LIBRENMS_PATH} -u ${PUID} -G librenms -s /bin/sh -D librenms \
-  && mkdir -p /data /var/run/nginx /var/run/php-fpm
+RUN chmod a+x /usr/local/bin/*
 
 EXPOSE 8000 514 514/udp
-WORKDIR ${LIBRENMS_PATH}
 VOLUME [ "/data" ]
 
 ENTRYPOINT [ "/init" ]
